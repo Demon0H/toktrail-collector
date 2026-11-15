@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -51,37 +50,16 @@ func main() {
 	}
 }
 func run(args []string) error {
-	if len(args) == 0 || args[0] == "help" {
-		fmt.Println("DH燃源榜", version, "\nsetup --ticket ONE_TIME_CODE --all --install (or set DH_TOKEN and use --grant)\ndiscover | status | repair | sync | periodic | uninstall | version\nAll commands accept --state-dir. Destination: "+serverURL)
-		return nil
-	}
-	if args[0] == "version" {
-		fmt.Println("DH燃源榜", version)
-		return nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
+	command, opt, handled, err := parseCLI(args)
+	if err != nil || handled {
 		return err
 	}
-	if args[0] == "discover" {
+	args = []string{command}
+	home := opt.Home
+	state, install, all, reconnect, ticket := &opt.State, &opt.Install, &opt.All, &opt.Reconnect, &opt.Ticket
+	gs := opt.Grants
+	if command == "discover" {
 		return json.NewEncoder(os.Stdout).Encode(discover(home))
-	}
-	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
-	state := fs.String("state-dir", filepath.Join(home, ".dh-tokenrank"), "isolated DH state directory")
-	install := fs.Bool("install", false, "install a per-user 30-minute task after setup")
-	all := fs.Bool("all", false, "authorize all supported local tools in the current user home, including tools added later")
-	reconnect := fs.Bool("reconnect", false, "rebind an existing state to the same account using a fresh ticket")
-	ticket := fs.String("ticket", "", "single-use website enrollment code")
-	var gs grantsFlag
-	fs.Var(&gs, "grant", "explicit read authorization, source=absolute-path; repeatable")
-	if err = fs.Parse(args[1:]); err != nil {
-		return err
-	}
-	if *reconnect && *ticket == "" {
-		return errors.New("--reconnect requires a fresh one-time --ticket")
-	}
-	if fs.NArg() != 0 {
-		return errors.New("unexpected arguments")
 	}
 	*state, err = filepath.Abs(*state)
 	if err != nil {
@@ -92,6 +70,9 @@ func run(args []string) error {
 		return err
 	}
 	task := scheduler.TaskConfig{Platform: runtime.GOOS, StateDir: *state, Binary: binary, HomeDir: home, Interval: 30 * time.Minute}
+	if args[0] == "diagnose" {
+		return printDiagnosis(*state, task, opt.JSON)
+	}
 	if args[0] == "status" {
 		return printStatus(*state, task)
 	}
@@ -112,6 +93,10 @@ func run(args []string) error {
 	defer lock.Close()
 	cfgPath := filepath.Join(*state, "dh-config.json")
 	if args[0] == "setup" {
+		cfg, e := prepareSetup(home, *state, task, *all, *install, gs)
+		if e != nil {
+			return e
+		}
 		token := strings.TrimSpace(os.Getenv("DH_TOKEN"))
 		if token == "" && *ticket == "" {
 			if previous, e := os.ReadFile(cfgPath); e == nil {
@@ -153,9 +138,6 @@ func run(args []string) error {
 		if len(token) != 64 {
 			return errors.New("set DH_TOKEN to your participation key from the DH website")
 		}
-		if len(gs) == 0 && !*all {
-			return errors.New("at least one explicit --grant is required; no paths are read by default")
-		}
 		if previous, e := os.ReadFile(cfgPath); e == nil {
 			var old config
 			if json.Unmarshal(previous, &old) != nil {
@@ -165,29 +147,18 @@ func run(args []string) error {
 				return errors.New("participation key differs from existing identity; use a separate --state-dir")
 			}
 		}
-		cfg := config{Token: token, All: *all}
-		for _, v := range gs {
-			s, p, ok := strings.Cut(v, "=")
-			if !ok || !registry.Production().IsKnownSource(s) || !filepath.IsAbs(p) {
-				return errors.New("grant must be a supported source=absolute-path")
+		cfg.Token = token
+		// Enrollment consumes a one-time code. Persist its credential before any
+		// subsequent network call so a temporary /me failure can be retried.
+		if *ticket != "" {
+			if err = saveConfig(cfgPath, cfg); err != nil {
+				return err
 			}
-			if _, err = os.Stat(p); err != nil {
-				return errors.New("granted path does not exist")
-			}
-			cfg.Grants = append(cfg.Grants, grant{s, p})
-		}
-		if *all {
-			cfg.Explicit = append([]grant(nil), cfg.Grants...)
-			cfg.Grants = mergeGrants(cfg.Grants, discover(home))
 		}
 		if _, err = call(http.MethodGet, "/api/me", token, nil); err != nil {
 			return err
 		}
-		data, _ := json.MarshalIndent(cfg, "", "  ")
-		if err = os.WriteFile(cfgPath, data, 0600); err != nil {
-			return err
-		}
-		if err = os.Chmod(cfgPath, 0600); err != nil {
+		if err = saveConfig(cfgPath, cfg); err != nil {
 			return err
 		}
 		if *install {
@@ -269,6 +240,33 @@ func run(args []string) error {
 	fmt.Println("DH sync complete. Destination:", serverURL)
 	return nil
 }
+func saveConfig(path string, cfg config) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(filepath.Dir(path), ".dh-config-")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(file.Name())
+	if err = file.Chmod(0600); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err = file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), path)
+}
 func uploadQueue(queue, token string) error {
 	store := outbox.New(filepath.Dir(queue))
 	ledger, err := store.Load()
@@ -305,6 +303,7 @@ func uploadQueue(queue, token string) error {
 		if e = store.MarkSynced(outbox.Receipt{BatchID: batch.BatchID, Status: "accepted", AcceptedRecords: len(batch.Records), ReceivedAt: time.Now()}); e != nil {
 			return e
 		}
+		fmt.Printf("DH batch accepted: records=%d added=%d duplicates=%d quarantined=%d\n", len(batch.Records), ack.Added, ack.Duplicates, ack.Quarantined)
 		if ack.Quarantined > 0 {
 			fmt.Fprintf(os.Stderr, "Batch %s: %d anomalous records are held by the server and excluded from ranking.\n", batch.BatchID, ack.Quarantined)
 		}
@@ -328,12 +327,12 @@ func call(method, path, token string, b []byte) ([]byte, error) {
 	client := &http.Client{Timeout: 45 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	res, err := client.Do(req)
 	if err != nil {
-		return nil, errors.New("DH server unreachable or TLS verification failed; pending batches retained")
+		return nil, requestFailure(path, "request", err, requestSecrets(token, b))
 	}
 	defer res.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(res.Body, 1024*1024))
 	if err != nil {
-		return nil, errors.New("failed to read DH acknowledgement")
+		return nil, requestFailure(path, "response read", err, requestSecrets(token, b))
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		var problem struct {
@@ -341,15 +340,13 @@ func call(method, path, token string, b []byte) ([]byte, error) {
 		}
 		message := "request rejected"
 		if json.Unmarshal(body, &problem) == nil && problem.Error != "" {
-			message = problem.Error
-			if len(message) > 400 {
-				message = message[:400]
-			}
-			if token != "" {
-				message = strings.ReplaceAll(message, token, "[redacted]")
+			message = redact(problem.Error, requestSecrets(token, b))
+			runes := []rune(message)
+			if len(runes) > 400 {
+				message = string(runes[:400])
 			}
 		}
-		return nil, fmt.Errorf("DH server returned HTTP %d: %s; pending batch retained", res.StatusCode, message)
+		return nil, fmt.Errorf("DH %s returned HTTP %d: %s%s", requestStage(path), res.StatusCode, message, retryHint(path))
 	}
 	var ack map[string]json.RawMessage
 	if json.Unmarshal(body, &ack) != nil {

@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --test tests/api.test.mjs tests/geo.test.mjs tests/auth.test.mjs
+      - run: node --test tests/api.test.mjs tests/geo.test.mjs tests/auth.test.mjs tests/releases.test.mjs
         working-directory: dh/server
   build:
     needs: test
@@ -92,6 +92,6 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           cd release
-          sha256sum *.zip *.tar.gz > SHA256SUMS
           cp ../dh/install/install.sh ../dh/install/install.ps1 .
+          node ../dh/build-release-manifest.mjs "$VERSION" .
           gh release create "$VERSION" ./* --verify-tag --latest --title "DH燃源榜 $VERSION" --notes-file ../dh/RELEASE_NOTES.md

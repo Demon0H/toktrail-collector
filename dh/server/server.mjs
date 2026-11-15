@@ -1,3 +1,4 @@
+import {releaseMetadata} from './releases.mjs';
 import {devices} from './devices.mjs';
 import {githubAuth} from './auth.mjs';
 import {locate} from './geo.mjs';
@@ -7,6 +8,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 const dir = process.env.DATA_DIR || fileURLToPath(new URL('./data', import.meta.url));
+const latestRelease = releaseMetadata(dir);
 mkdirSync(dir,{recursive:true});
 const db = new DatabaseSync(`${dir}/dh.sqlite`);
 db.exec(`PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS members(id TEXT PRIMARY KEY,name TEXT NOT NULL,city TEXT NOT NULL,secret TEXT NOT NULL,public INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS records(member TEXT NOT NULL,key TEXT NOT NULL,date TEXT NOT NULL,tool TEXT NOT NULL,model TEXT NOT NULL,input TEXT,output TEXT,cacheRead TEXT,cacheWrite TEXT,PRIMARY KEY(member,key));`);
@@ -37,6 +39,7 @@ const server=http.createServer(async(req,res)=>{try{
  if(await auth.handle(req,res,u))return;
  if(u.pathname==='/api/profile'&&req.method==='PATCH'){const m=member(req,true);if(!auth.session(req))throw fail('请先通过 GitHub 登录',401);const b=await body(req);const name=String(b.name||'').trim();if(!name||name.length>32)throw fail('昵称需为 1–32 个字符');db.prepare('UPDATE members SET name=?,public=? WHERE id=?').run(name,typeof b.public==='boolean'?(b.public?1:0):m.public,m.id);return send(res,200,{ok:true});}
  if(u.pathname==='/api/health'&&req.method==='GET')return send(res,200,{ok:true,service:'DH TokenRank'});
+ if(u.pathname==='/api/latest.json'&&req.method==='GET')return send(res,200,await latestRelease());
  if(u.pathname==='/api/location'&&req.method==='GET')return send(res,200,await locate(req));
  if(u.pathname==='/api/enrollment'&&req.method==='POST'){const m=member(req,true);db.prepare('DELETE FROM enrollments WHERE member=? OR expires<?').run(m.id,Date.now());const ticket=randomBytes(32).toString('hex'),expires=Date.now()+15*60000;db.prepare('INSERT INTO enrollments VALUES(?,?,?)').run(hash(ticket),m.id,expires);return send(res,201,{ticket,expires,name:m.name});}
  if(u.pathname==='/api/enroll'&&req.method==='POST'){const b=await body(req);if(typeof b.ticket!=='string')throw fail('接入码无效',401);const entry=db.prepare('SELECT * FROM enrollments WHERE ticket=? AND expires>?').get(hash(b.ticket),Date.now());if(!entry)throw fail('接入码已使用或过期，请重新生成',401);return send(res,200,registry.enroll(entry,b));}

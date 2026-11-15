@@ -24,8 +24,10 @@ $('register').onsubmit=e=>{e.preventDefault();action(e.submitter,async()=>{
  const f=new FormData(e.target),name=String(f.get('name')||'').trim();if(!currentUser)throw Error('请先使用 GitHub 登录');
  await api('/api/profile','PATCH',{name,public:true});currentUser.name=name;
  const b=await api('/api/enrollment','POST',{});
- let prompt=`请阅读 https://tokenrank.demonh.site/agent-setup.md，帮我接入 DH燃源榜。昵称：${JSON.stringify(name)}；一次性接入码：${b.ticket}（15分钟有效）。请识别系统和架构，下载安装最新专用采集器并校验 SHA-256，使用 setup --ticket 接入码 --all --install，采集本机所有受支持 AI 工具的用量，包含已有历史及后续新增工具，执行首次同步并验证定时任务。只连接该站点，公开状态以网站账号设置为准，Agent 不修改；不得输出或提交长期密钥。先展示自动发现的工具目录，若已有配置，先保留状态并用这次接入码执行 setup --ticket 接入码 --reconnect --all --install 核对同一账号；跨账号请另选状态目录，不要覆盖身份。`;
- if(repairMode){prompt=`请阅读 https://tokenrank.demonh.site/agent-setup.md，修复 DH燃源榜接入。一次性接入码：${b.ticket}（15分钟有效，仅在密钥失效重绑时使用）。请升级至 dh-v1.1.1 或更新版本的完整发行包，Windows 必须包含 toktrail-background.exe。保留 ~/.dh-tokenrank 和归档，绝不清空游标或伪造历史批次。先运行 status；存在 missingArchives 时运行 repair（通过服务器历史严格核对，失败就停止并报告），然后 setup --all --install 复用已有配置，再 sync，确认退出码为0和定时任务已注册。需要重绑或核对网站账号时用 setup --ticket 接入码 --reconnect --all --install，服务器只允许绑定原账号原设备；有效本地身份也可直接复用。不输出长期密钥、原始会话或隐私内容。成功批次保留，新上传按账号去重；如果任何步骤失败，请报告确切步骤，不能宣称成功。`;}repairMode=false;
+ const scope='允许读当前用户所有受支持 AI 工具的用量及历史，写 ~/.dh-tokenrank 和用户级安装目录（Windows %LOCALAPPDATA%\\DH-TokenRank；macOS/Linux ~/.local/share/dh-tokenrank），访问本站与官方 GitHub Release，创建每30分钟的用户级任务。先展示 discover 目录；遇沙箱限制按环境权限流程处理，不绕过。';
+ const checks='完成后回报版本、归档 SHA-256（Windows 另报三个 exe 的本地哈希）、授权来源、sync 退出码/实际 accepted 数量、status 的 scheduled/pendingBatches/missingArchives，以及本次后台执行结果。未验证项明确报告，不宣称成功；不输出凭据或会话正文，Agent 不改公开状态。';
+ let prompt=`请阅读 https://tokenrank.demonh.site/agent-setup.md 帮我接入 DH燃源榜，昵称：${JSON.stringify(name)}；一次性接入码：${b.ticket}（15分钟有效）。${scope}按 /api/latest.json 下载最新专用完整包并核对 SHA-256，使用 DH_TICKET 环境变量或私有码文件传码，setup --all --install。已有配置先保留状态，优先无接入码复用；仅核对同账号/重绑时加 --reconnect，跨账号独立状态目录。${checks}`;
+ if(repairMode){prompt=`请阅读 https://tokenrank.demonh.site/agent-setup.md 修复 DH燃源榜。一次性接入码：${b.ticket}（15分钟有效，仅重绑时使用）。${scope}升级 dh-v1.1.2 或更新完整包，备份并保留状态，禁止清空游标或伪造历史。先 diagnose --json/status；缺归档时 repair，核对失败停止。有效身份直接 setup --all --install，再 sync；需重绑时通过 DH_TICKET 或私有码文件传新码并加 --reconnect，只能原账号原设备。${checks}`;}repairMode=false;
  $('agent-prompt').textContent=prompt;$('agent-prompt').hidden=false;
  if(navigator.clipboard){await navigator.clipboard.writeText(prompt);feedback('专属配置已复制。可通过 GitHub 账号管理公开状态和数据，接入码仅能使用一次。');e.submitter.textContent='已复制，粘贴给 Agent';}
  else {feedback('接入配置已生成。当前 HTTP 页面不能使用系统剪贴板，请手动选中上面的完整说明复制，或使用 HTTPS 入口。');}

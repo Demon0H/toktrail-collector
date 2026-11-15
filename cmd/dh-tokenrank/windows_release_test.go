@@ -48,4 +48,25 @@ func TestWindowsPackagedScheduler(t *testing.T) {
 	if !info.Registered || !info.Background || info.Collector != binary || info.Launcher != scheduler.WindowsBackgroundPath(binary) {
 		t.Fatalf("wrong packaged task action: %+v", info)
 	}
+	installed, e := statusResult(state, cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if installed["scheduled"] != true || installed["background"] != true || installed["launcherPresent"] != true {
+		t.Fatalf("inconsistent installed status: %#v", installed)
+	}
+	if _, e = scheduler.Uninstall(scheduler.UninstallOptions{Config: cfg}); e != nil {
+		t.Fatal(e)
+	}
+	removed, e := statusResult(state, cfg)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if removed["scheduled"] != false || removed["background"] != false || removed["launcherPresent"] != true || removed["schedulerState"] != "not-registered" {
+		t.Fatalf("launcher mistaken for registered background task after uninstall: %#v", removed)
+	}
+	if artifacts, ok := removed["schedulerArtifacts"].([]string); !ok || len(artifacts) != 0 {
+		t.Fatalf("uninstalled task artifacts must be an empty array, got %#v", removed["schedulerArtifacts"])
+	}
+
 }

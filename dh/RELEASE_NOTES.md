@@ -1,8 +1,11 @@
-DH燃源榜 dh-v1.1.1 修复与恢复版本。
+DH燃源榜 dh-v1.1.2：让 Agent 安装可恢复、可诊断、可验收。
 
-- Windows 包补齐 toktrail-background.exe，安装器验证并复制全部三个程序；原生 CI 实际安装、查询和移除测试任务。
-- 已确认的批次不再删除，保持不可变归档和增量信任链；只上传 pending 批次。Codex / DeepSeek 的第二次扫描与新增记录已补回归测试。
-- 新增 status、repair、已有身份复用 setup；历史恢复只接受服务器确认且严格核对的快照，不重传历史或清空游标。
-- 同一账号的多设备身份、凭据撤销/安全重绑、同步失败状态；严格拒绝历史篡改、未来时间和高频请求，异常 Token 隔离。客户端自报无法绝对防伪。
-- 网站新增修复配置说明、设备管理与 GitHub 头像同步。
-- macOS / Windows / Linux 的 amd64 与 arm64 六平台，附安装脚本和 SHA256SUMS。
+- 兑换一次性接入码之前，先检查授权参数、状态可写、任务配置及 Windows 三个程序齐全；兑换成功的设备凭据在后续联网前原子保存，瞬断后可直接复用。
+- 支持 DH_TICKET / --ticket-file，避免默认把接入码放进进程参数。
+- Windows 下载增加 curl → PowerShell → Python 备用通道，macOS/Linux 增加 wget/Python；始终校验 TLS 和 SHA-256。
+- 发布 latest.json：六平台带版本固定 URL、大小、SHA-256；站点提供缓存接口 /api/latest.json，带旧缓存标识，不依赖 GitHub API 小时配额。
+- 新增 diagnose --json（doctor 别名）及 privacy；命令帮助不执行操作，未知参数非零退出。
+- 网络错误区分 DNS/TCP/超时/代理/TLS，保留脱敏底层错误链；setup 与上传使用不同恢复提示。
+- Windows status 明确 scheduled、background、launcherPresent、schedulerState，未注册任务返回空 artifacts，查询失败标为 unknown。
+- 接入说明增加权限范围、逐项验收、真实后台任务验证、失败处理矩阵与无交互会话限制。
+- 保留 v1.1.1 的完整 Windows 后台启动器、不可变历史归档、多设备去重和安全恢复。

@@ -334,6 +334,23 @@ type UninstallOptions struct {
 // failure after the first mutation it rolls back (undo commands + removal
 // of every file it wrote) and returns the error: no partial install
 // survives.
+// ValidateInstall checks local plan and launcher prerequisites without creating
+// a task or changing scheduler files. Enrollment callers use it before redeeming
+// one-time credentials; installation still validates again at its commit point.
+func ValidateInstall(cfg TaskConfig) error {
+	plan, err := RenderInstall(cfg)
+	if err != nil {
+		return err
+	}
+	if err = validatePlanPaths(plan); err != nil {
+		return err
+	}
+	if cfg.Platform == "windows" {
+		return validateBackgroundLauncher(cfg.Binary)
+	}
+	return nil
+}
+
 func Install(opt InstallOptions) (Plan, error) {
 	plan, err := RenderInstall(opt.Config)
 	if err != nil {
