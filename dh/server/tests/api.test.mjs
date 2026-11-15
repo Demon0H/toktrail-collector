@@ -21,4 +21,17 @@ test('community lifecycle, opt-in, deduplication, ownership and privacy',async()
  await request('/api/me','DELETE',undefined,token);assert.equal((await request('/api/me','GET',undefined,token)).status,401);
 });
 test('reject cumulative counts, invalid dates and overflowing counters',()=>{for(const r of [{...record,kind:'cumulative'},{...record,occurredAt:'bad'},{...record,output:'18446744073709551616'},{...record,input:7}])assert.throws(()=>normalize([r]));assert.equal(normalize([record])[0].cacheRead,null);});
+test('one-time enrollment scopes device tokens to sync and revokes them on deletion',async()=>{
+ const owner=(await request('/api/members','POST',{name:'Enrollment test',city:'forged-city'})).data;
+ assert.equal(owner.city,'');
+ const enrollment=(await request('/api/enrollment','POST',{},owner.token)).data;
+ const device=await request('/api/enroll','POST',{ticket:enrollment.ticket});assert.equal(device.status,200);
+ assert.equal((await request('/api/enroll','POST',{ticket:enrollment.ticket})).status,401);
+ assert.equal((await request('/api/me','GET',undefined,device.data.token)).status,200);
+ assert.equal((await request('/api/me','DELETE',undefined,device.data.token)).status,401);
+ assert.equal((await request('/api/me','PATCH',{public:true},device.data.token)).status,401);
+ assert.equal((await request('/api/import','POST',{records:[record]},device.data.token)).data.added,1);
+ await request('/api/me','DELETE',undefined,owner.token);
+ assert.equal((await request('/api/me','GET',undefined,device.data.token)).status,401);
+});
 after(async()=>{await new Promise(resolve=>server.close(resolve));try{rmSync(dir,{recursive:true,force:true});}catch{/* SQLite may retain a Windows file handle until process exit. */}});

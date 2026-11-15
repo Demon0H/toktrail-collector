@@ -35,8 +35,10 @@ type grant struct {
 	Path   string `json:"path"`
 }
 type config struct {
-	Token  string  `json:"token"`
-	Grants []grant `json:"grants"`
+	Token    string  `json:"token"`
+	Grants   []grant `json:"grants"`
+	All      bool    `json:"all"`
+	Explicit []grant `json:"explicit,omitempty"`
 }
 type grantsFlag []string
 
@@ -50,7 +52,7 @@ func main() {
 }
 func run(args []string) error {
 	if len(args) == 0 || args[0] == "help" {
-		fmt.Println("DH燃源榜", version, "\nsetup --grant source=absolute-path [--install] (set DH_TOKEN in environment)\nsync | periodic | uninstall | version\nAll commands accept --state-dir. Destination: "+serverURL)
+		fmt.Println("DH燃源榜", version, "\nsetup --ticket ONE_TIME_CODE --all --install (or set DH_TOKEN and use --grant)\ndiscover | sync | periodic | uninstall | version\nAll commands accept --state-dir. Destination: "+serverURL)
 		return nil
 	}
 	if args[0] == "version" {
@@ -61,9 +63,14 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
+	if args[0] == "discover" {
+		return json.NewEncoder(os.Stdout).Encode(discover(home))
+	}
 	fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	state := fs.String("state-dir", filepath.Join(home, ".dh-tokenrank"), "isolated DH state directory")
 	install := fs.Bool("install", false, "install a per-user 30-minute task after setup")
+	all := fs.Bool("all", false, "authorize all supported local tools in the current user home, including tools added later")
+	ticket := fs.String("ticket", "", "single-use website enrollment code")
 	var gs grantsFlag
 	fs.Var(&gs, "grant", "explicit read authorization, source=absolute-path; repeatable")
 	if err = fs.Parse(args[1:]); err != nil {
@@ -99,10 +106,27 @@ func run(args []string) error {
 	cfgPath := filepath.Join(*state, "dh-config.json")
 	if args[0] == "setup" {
 		token := strings.TrimSpace(os.Getenv("DH_TOKEN"))
+		if *ticket != "" {
+			if _, e := os.Stat(cfgPath); e == nil {
+				return errors.New("already configured; run sync, or use a separate --state-dir for another identity")
+			}
+			payload, _ := json.Marshal(map[string]string{"ticket": *ticket})
+			response, e := call(http.MethodPost, "/api/enroll", "", payload)
+			if e != nil {
+				return e
+			}
+			var receipt struct {
+				Token string `json:"token"`
+			}
+			if json.Unmarshal(response, &receipt) != nil {
+				return errors.New("invalid enrollment response")
+			}
+			token = receipt.Token
+		}
 		if len(token) != 64 {
 			return errors.New("set DH_TOKEN to your participation key from the DH website")
 		}
-		if len(gs) == 0 {
+		if len(gs) == 0 && !*all {
 			return errors.New("at least one explicit --grant is required; no paths are read by default")
 		}
 		if previous, e := os.ReadFile(cfgPath); e == nil {
@@ -114,7 +138,7 @@ func run(args []string) error {
 				return errors.New("participation key differs from existing identity; use a separate --state-dir")
 			}
 		}
-		cfg := config{Token: token}
+		cfg := config{Token: token, All: *all}
 		for _, v := range gs {
 			s, p, ok := strings.Cut(v, "=")
 			if !ok || !registry.Production().IsKnownSource(s) || !filepath.IsAbs(p) {
@@ -124,6 +148,10 @@ func run(args []string) error {
 				return errors.New("granted path does not exist")
 			}
 			cfg.Grants = append(cfg.Grants, grant{s, p})
+		}
+		if *all {
+			cfg.Explicit = append([]grant(nil), cfg.Grants...)
+			cfg.Grants = mergeGrants(cfg.Grants, discover(home))
 		}
 		if _, err = call(http.MethodGet, "/api/me", token, nil); err != nil {
 			return err
@@ -151,6 +179,9 @@ func run(args []string) error {
 	if err = json.Unmarshal(data, &cfg); err != nil {
 		return errors.New("invalid local configuration")
 	}
+	if cfg.All {
+		cfg.Grants = mergeGrants(cfg.Explicit, discover(home))
+	}
 	if len(cfg.Grants) == 0 {
 		return errors.New("no grants; nothing read or uploaded")
 	}
@@ -169,12 +200,14 @@ func run(args []string) error {
 	if err = uploadQueue(queue, cfg.Token); err != nil {
 		return err
 	}
+	var collectionErrors []error
 	for _, g := range cfg.Grants {
 		id := fmt.Sprintf("dh-%d", time.Now().UnixNano())
 		out := filepath.Join(queue, id+".json")
 		prepared, e := pipeline.PrepareExport(adapter.Options{Source: g.Source, Input: g.Path, Output: out, BatchID: id, StateDir: *state})
 		if e != nil {
-			return errors.New("collection failed; run upstream toktrail preview locally for diagnostics")
+			collectionErrors = append(collectionErrors, fmt.Errorf("%s: collection failed; other tools continue, run toktrail preview locally for diagnostics", g.Source))
+			continue
 		}
 		chunks, e := pipeline.SplitPreparedExport(prepared)
 		if e != nil {
@@ -191,6 +224,9 @@ func run(args []string) error {
 		if err = uploadQueue(queue, cfg.Token); err != nil {
 			return err
 		}
+	}
+	if len(collectionErrors) > 0 {
+		return errors.Join(collectionErrors...)
 	}
 	fmt.Println("DH sync complete. Destination:", serverURL)
 	return nil
@@ -260,4 +296,34 @@ func call(method, path, token string, b []byte) ([]byte, error) {
 		}
 	}
 	return body, nil
+}
+
+// discover only stats registered locations; it does not parse conversation files.
+func discover(home string) []grant {
+	out := []grant{}
+	for _, spec := range registry.SupportedTools() {
+		if spec.IsAccountNetwork() {
+			continue
+		}
+		for _, p := range spec.DefaultInputCandidates(home) {
+			if _, err := os.Stat(p); err == nil {
+				out = append(out, grant{spec.Source, p})
+			}
+		}
+	}
+	return mergeGrants(nil, out)
+}
+func mergeGrants(a, b []grant) []grant {
+	seen := map[string]bool{}
+	out := []grant{}
+	for _, list := range [][]grant{a, b} {
+		for _, g := range list {
+			key := g.Source + "=" + filepath.Clean(g.Path)
+			if !seen[key] {
+				seen[key] = true
+				out = append(out, g)
+			}
+		}
+	}
+	return out
 }

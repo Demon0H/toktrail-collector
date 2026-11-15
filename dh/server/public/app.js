@@ -21,7 +21,16 @@ async function load(){try{const b=await api('/api/records');records=b.records;is
 document.querySelectorAll('[data-days]').forEach(b=>b.onclick=()=>{days=Number(b.dataset.days);document.querySelectorAll('[data-days]').forEach(x=>x.classList.toggle('selected',x===b));render();});
 for(const id of ['tool','model','cache','search'])$(id).addEventListener('input',render);
 $('sort').onclick=()=>{descending=!descending;$('sort').textContent='Token 用量 '+(descending?'↓':'↑');render();};$('demo').onclick=()=>{records=demo();isDemo=true;options();render();};$('live').onclick=load;
-$('register').onsubmit=e=>{e.preventDefault();action(e.submitter,async()=>{const f=new FormData(e.target);const b=await api('/api/members','POST',{name:f.get('name'),city:f.get('city'),public:f.has('public')});$('token').value=b.token;feedback('参与身份已创建，请立即复制保存密钥。现在可以导入文件。');});};
+$('register').onsubmit=e=>{e.preventDefault();action(e.submitter,async()=>{
+ const f=new FormData(e.target),name=String(f.get('name')||'').trim();let identity;
+ if(!$('token').value.trim()){identity=await api('/api/members','POST',{name,public:f.has('public')});$('token').value=identity.token;$('city').textContent=identity.city||'暂时无法识别';}
+ else {identity=await api('/api/me');if(identity.name!==name)throw Error('已有密钥属于 '+identity.name+'，请使用相同昵称，或清空密钥创建新身份。');}
+ const b=await api('/api/enrollment','POST',{});
+ const prompt=`请阅读 https://tokenrank.demonh.site/agent-setup.md，帮我接入 DH燃源榜。昵称：${JSON.stringify(name)}；一次性接入码：${b.ticket}（15分钟有效）。请识别系统和架构，下载安装最新专用采集器并校验 SHA-256，使用 setup --ticket 接入码 --all --install，采集本机所有受支持 AI 工具的用量，包含已有历史及后续新增工具，执行首次同步并验证定时任务。只连接该站点，公开状态由我在网页选择；不得输出或提交长期密钥。先展示自动发现的工具目录，若已有配置先验证 sync，避免覆盖身份。`;
+ $('agent-prompt').textContent=prompt;
+ if(navigator.clipboard){await navigator.clipboard.writeText(prompt);feedback('专属配置已复制。请保存右侧参与密钥，用于撤回公开和删除；接入码仅能使用一次。');e.submitter.textContent='已复制，粘贴给 Agent';}
+ else {feedback('接入配置已生成。当前 HTTP 页面不能使用系统剪贴板，请手动选中上面的完整说明复制，或使用 HTTPS 入口。');}
+ });};
 $('copy').onclick=()=>action($('copy'),async()=>{if(!$('token').value)throw Error('请先创建身份或输入密钥');await navigator.clipboard.writeText($('token').value);feedback('密钥已复制，请妥善保存。');});
 $('import').onclick=()=>action($('import'),async()=>{if(!$('token').value.trim())throw Error('请先创建身份或输入密钥');const f=$('file').files[0];if(!f)throw Error('请先选择导出的 JSON 文件');if(f.size>12*1024*1024)throw Error('文件超过 12 MB');let b;try{b=JSON.parse(await f.text());}catch{throw Error('JSON 文件无法解析，请重新导出');}const r=await api('/api/import','POST',b);feedback(`导入成功：新增 ${r.added} 条，跳过 ${r.duplicates} 条重复记录。公开参与后可在榜单查看。`);await load();});
 for(const [id,pub] of [['publish',true],['hide',false]])$(id).onclick=()=>action($(id),async()=>{await api('/api/me','PATCH',{public:pub});feedback(pub?'已公开参与，昵称、城市和用量将展示在榜单。':'已撤回公开，数据保留供你后续参与。');await load();});
@@ -29,4 +38,5 @@ $('delete').onclick=()=>action($('delete'),async()=>{if(!confirm('确定永久�
 load();
 
 $('platform').onchange=()=>{$('download').href='https://github.com/Demon0H/toktrail-collector/releases/latest/download/dh-tokenrank-'+$('platform').value;};
-$('copy-agent').onclick=()=>action($('copy-agent'),async()=>{await navigator.clipboard.writeText($('agent-prompt').textContent);$('copy-agent').textContent='已复制配置说明';setTimeout(()=>$('copy-agent').textContent='复制给 Agent',2500);});
+
+api('/api/location').then(b=>{$('city').textContent=b.city||'暂时无法识别（不影响接入）';}).catch(()=>{$('city').textContent='暂时无法识别（不影响接入）';});

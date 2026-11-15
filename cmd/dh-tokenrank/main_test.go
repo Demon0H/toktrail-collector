@@ -81,3 +81,25 @@ func TestNoGrantsDoesNotConfigure(t *testing.T) {
 		t.Fatal("unexpected config")
 	}
 }
+
+func TestDiscoverAllRegisteredLocalTools(t *testing.T) {
+	home := t.TempDir()
+	for _, p := range []string{".codex/sessions", ".claude/projects", ".kimi/sessions", ".local/share/opencode"} {
+		if e := os.MkdirAll(filepath.Join(home, filepath.FromSlash(p)), 0700); e != nil {
+			t.Fatal(e)
+		}
+	}
+	gs := discover(home)
+	found := map[string]bool{}
+	for _, g := range gs {
+		found[g.Source] = true
+	}
+	for _, s := range []string{"codex-jsonl", "claude-code-jsonl", "kimi-cli-jsonl", "opencode-sqlite"} {
+		if !found[s] {
+			t.Fatalf("missed local tool %s", s)
+		}
+	}
+	if found["cursor-dashboard-api"] {
+		t.Fatal("network account source granted without login")
+	}
+}
