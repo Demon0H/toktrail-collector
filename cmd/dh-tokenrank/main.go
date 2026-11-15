@@ -45,7 +45,7 @@ func (v *grantsFlag) String() string     { return strings.Join(*v, ",") }
 func (v *grantsFlag) Set(s string) error { *v = append(*v, s); return nil }
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "DH燃源榜:", err)
+		fmt.Fprintln(os.Stderr, "DH燃元榜:", err)
 		os.Exit(1)
 	}
 }

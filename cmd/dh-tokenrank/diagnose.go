@@ -77,7 +77,7 @@ func diagnosis(state string, task scheduler.TaskConfig) (map[string]any, error) 
 		raw, _ := io.ReadAll(io.LimitReader(file, 65536))
 		lines := strings.Split(string(raw), "\n")
 		for i := len(lines) - 1; i >= 0; i-- {
-			if strings.HasPrefix(lines[i], "DH燃源榜:") {
+			if strings.HasPrefix(lines[i], "DH燃元榜:") || strings.HasPrefix(lines[i], "DH燃源榜:") {
 				result["lastError"] = redact(strings.TrimSpace(lines[i]), []string{cfg.Token, os.Getenv("DH_TOKEN"), os.Getenv("DH_TICKET")})
 				break
 			}

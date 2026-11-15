@@ -84,7 +84,7 @@ func TestDiagnosisDoesNotExposeStoredCredential(t *testing.T) {
 	raw, _ := json.Marshal(config{Token: secret})
 	os.WriteFile(filepath.Join(state, "dh-config.json"), raw, 0600)
 	os.MkdirAll(filepath.Join(state, "logs"), 0700)
-	os.WriteFile(filepath.Join(state, "logs", "periodic.err.log"), []byte("DH燃源榜: reflected "+secret+"\n"), 0600)
+	os.WriteFile(filepath.Join(state, "logs", "periodic.err.log"), []byte("DH燃元榜: reflected "+secret+"\n"), 0600)
 	result, err := diagnosis(state, scheduler.TaskConfig{Platform: "linux", StateDir: state, Binary: filepath.Join(state, "dh-tokenrank"), HomeDir: state, Interval: 30 * time.Minute})
 	if err != nil {
 		t.Fatal(err)

@@ -1,4 +1,4 @@
-# DH燃源榜 Agent 自动接入说明
+# DH燃元榜 Agent 自动接入说明
 
 固定站点：https://tokenrank.demonh.site 。专用命令是 `dh-tokenrank`，不要使用上游 `toktrail connect/bind/sync/service` 连接其他站点。
 

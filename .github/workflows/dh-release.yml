@@ -94,4 +94,4 @@ jobs:
           cd release
           cp ../dh/install/install.sh ../dh/install/install.ps1 .
           node ../dh/build-release-manifest.mjs "$VERSION" .
-          gh release create "$VERSION" ./* --verify-tag --latest --title "DH燃源榜 $VERSION" --notes-file ../dh/RELEASE_NOTES.md
+          gh release create "$VERSION" ./* --verify-tag --latest --title "DH燃元榜 $VERSION" --notes-file ../dh/RELEASE_NOTES.md

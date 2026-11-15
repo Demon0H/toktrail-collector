@@ -32,7 +32,7 @@ func printHelp(command string) {
 		fmt.Println("dh-tokenrank " + commandUsage[command])
 		return
 	}
-	fmt.Println("DH燃源榜", version, "\nCommands: setup, discover, status, diagnose, doctor, privacy, repair, sync, periodic, uninstall, version\nUse COMMAND --help for command-specific flags. Destination: "+serverURL)
+	fmt.Println("DH燃元榜", version, "\nCommands: setup, discover, status, diagnose, doctor, privacy, repair, sync, periodic, uninstall, version\nUse COMMAND --help for command-specific flags. Destination: "+serverURL)
 }
 func parseCLI(args []string) (string, cliOptions, bool, error) {
 	var opt cliOptions
@@ -63,7 +63,7 @@ func parseCLI(args []string) (string, cliOptions, bool, error) {
 			return command, opt, false, errors.New("unexpected arguments; use command --help")
 		}
 		if command == "version" {
-			fmt.Println("DH燃源榜", version)
+			fmt.Println("DH燃元榜", version)
 		} else {
 			fmt.Println("DH reads only authorized current-user tool usage counters, timestamps, tools and model identifiers. It never uploads prompts, conversation bodies or absolute local paths. Destination: " + serverURL + ". Device credentials are stored in the private local state directory; uninstall preserves state. GitHub login makes profile and usage public by default; visibility can be withdrawn on the website.")
 		}

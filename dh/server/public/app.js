@@ -26,8 +26,8 @@ $('register').onsubmit=e=>{e.preventDefault();action(e.submitter,async()=>{
  const b=await api('/api/enrollment','POST',{});
  const scope='允许读当前用户所有受支持 AI 工具的用量及历史，写 ~/.dh-tokenrank 和用户级安装目录（Windows %LOCALAPPDATA%\\DH-TokenRank；macOS/Linux ~/.local/share/dh-tokenrank），访问本站与官方 GitHub Release，创建每30分钟的用户级任务。先展示 discover 目录；遇沙箱限制按环境权限流程处理，不绕过。';
  const checks='完成后回报版本、归档 SHA-256（Windows 另报三个 exe 的本地哈希）、授权来源、sync 退出码/实际 accepted 数量、status 的 scheduled/pendingBatches/missingArchives，以及本次后台执行结果。未验证项明确报告，不宣称成功；不输出凭据或会话正文，Agent 不改公开状态。';
- let prompt=`请阅读 https://tokenrank.demonh.site/agent-setup.md 帮我接入 DH燃源榜，昵称：${JSON.stringify(name)}；一次性接入码：${b.ticket}（15分钟有效）。${scope}按 /api/latest.json 下载最新专用完整包并核对 SHA-256，使用 DH_TICKET 环境变量或私有码文件传码，setup --all --install。已有配置先保留状态，优先无接入码复用；仅核对同账号/重绑时加 --reconnect，跨账号独立状态目录。${checks}`;
- if(repairMode){prompt=`请阅读 https://tokenrank.demonh.site/agent-setup.md 修复 DH燃源榜。一次性接入码：${b.ticket}（15分钟有效，仅重绑时使用）。${scope}升级 dh-v1.1.2 或更新完整包，备份并保留状态，禁止清空游标或伪造历史。先 diagnose --json/status；缺归档时 repair，核对失败停止。有效身份直接 setup --all --install，再 sync；需重绑时通过 DH_TICKET 或私有码文件传新码并加 --reconnect，只能原账号原设备。${checks}`;}repairMode=false;
+ let prompt=`请阅读 https://tokenrank.demonh.site/agent-setup.md 帮我接入 DH燃元榜，昵称：${JSON.stringify(name)}；一次性接入码：${b.ticket}（15分钟有效）。${scope}按 /api/latest.json 下载最新专用完整包并核对 SHA-256，使用 DH_TICKET 环境变量或私有码文件传码，setup --all --install。已有配置先保留状态，优先无接入码复用；仅核对同账号/重绑时加 --reconnect，跨账号独立状态目录。${checks}`;
+ if(repairMode){prompt=`请阅读 https://tokenrank.demonh.site/agent-setup.md 修复 DH燃元榜。一次性接入码：${b.ticket}（15分钟有效，仅重绑时使用）。${scope}升级 dh-v1.1.2 或更新完整包，备份并保留状态，禁止清空游标或伪造历史。先 diagnose --json/status；缺归档时 repair，核对失败停止。有效身份直接 setup --all --install，再 sync；需重绑时通过 DH_TICKET 或私有码文件传新码并加 --reconnect，只能原账号原设备。${checks}`;}repairMode=false;
  $('agent-prompt').textContent=prompt;$('agent-prompt').hidden=false;
  if(navigator.clipboard){await navigator.clipboard.writeText(prompt);feedback('专属配置已复制。可通过 GitHub 账号管理公开状态和数据，接入码仅能使用一次。');e.submitter.textContent='已复制，粘贴给 Agent';}
  else {feedback('接入配置已生成。当前 HTTP 页面不能使用系统剪贴板，请手动选中上面的完整说明复制，或使用 HTTPS 入口。');}
