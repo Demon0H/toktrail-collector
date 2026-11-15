@@ -13,3 +13,5 @@ IP 查询使用 HTTPS ipwho.is，内存缓存 15 分钟，不写入数据库，�
 8081→40001 保留为临时 HTTP 预览；正式入口始终使用 HTTPS。无需额外 40008 或 DNS TXT。Caddyfile 只是空白主机备选配置，勿覆盖现有 Nginx。
 
 检查：应用机 systemctl status dh-tokenrank；公网机 systemctl status dh-tokenrank-tunnel nginx、nginx -t；curl -f https://tokenrank.demonh.site/api/health。备份 SQLite 前停止应用或使用在线备份工具。
+
+GitHub OAuth 凭据仅保存于 NAT 主机 /etc/dh-tokenrank.env（root 0600），通过独立 systemd drop-in 加载，不进入仓库。回调 https://tokenrank.demonh.site/auth/github/callback；使用 state + PKCE，只读取公开身份。网站使用 Secure/HttpOnly/SameSite 会话 cookie 和 CSRF token，不持久化 GitHub access token。首页只展示真实榜单，/setup 先一句话再手动接入，均要求 GitHub 登录。登录后默认公开，可撤回。旧的 HTTP 40001 入口自动跳转正式 HTTPS 域名。

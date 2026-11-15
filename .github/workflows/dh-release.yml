@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-      - run: node --test tests/api.test.mjs tests/geo.test.mjs
+      - run: node --test tests/api.test.mjs tests/geo.test.mjs tests/auth.test.mjs
         working-directory: dh/server
   build:
     needs: test

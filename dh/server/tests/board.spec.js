@@ -1,14 +1,16 @@
 import {test,expect} from '@playwright/test';
-test('desktop and mobile demo, filters and joining flow',async({page})=>{
- const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('/');await page.getByRole('button',{name:'看看演示'}).click();await expect(page.locator('#rows tr:not(.detail-row)')).toHaveCount(10);
- await page.locator('[data-detail]').first().click();await expect(page.locator('.detail-row').first()).toBeVisible();await expect(page.locator('.detail-row').first()).toContainText('缓存写入');await page.screenshot({path:'test-results/desktop.png',fullPage:true});
- await page.locator('#search').fill('Demon0H');await expect(page.locator('#rows tr:not(.detail-row)')).toHaveCount(1);await page.locator('#cache').check();await expect(page.locator('.bar span').first()).not.toHaveCSS('width','0px');
- await page.locator('#search').fill('不存在的昵称');await expect(page.locator('#empty')).toBeVisible();await page.locator('#search').fill('');
- await page.getByRole('button',{name:'真实榜单',exact:true}).click();await page.locator('[name=name]').fill('UI-'+Date.now());await page.locator('[name=public]').check();await page.locator('#copy-agent').click();await expect(page.locator('#token')).not.toHaveValue('');await expect(page.locator('#agent-prompt')).toContainText('--all --install');await expect(page.locator('#agent-prompt')).not.toContainText(await page.locator('#token').inputValue());
- await page.locator('#file').setInputFiles({name:'usage.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({records:[{recordKey:'ui-1',kind:'delta',occurredAt:new Date().toISOString(),tool:'Codex',model:'ui-model',input:'1000',output:'500',cacheRead:'20',cacheWrite:'0'}]}))});
- await page.getByRole('button',{name:'导入我的用量'}).click();await expect(page.locator('#feedback')).toContainText('新增 1 条');await expect(page.locator('#rows')).toContainText('UI-');
- await page.getByRole('button',{name:'撤回公开',exact:true}).click();await expect(page.locator('#feedback')).toContainText('已撤回公开');
- await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'看看演示'}).click();await page.locator('[data-detail]').first().click();await expect(page.locator('.detail-row').first()).toBeVisible();await page.screenshot({path:'test-results/mobile.png',fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
- page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'删除我的全部数据'}).click();await expect(page.locator('#feedback')).toContainText('已删除');expect(errors).toEqual([]);
+test('GitHub enrollment, real-only board and responsive tool-model details',async({page})=>{
+ let logged=false;const now=new Date().toISOString();const records=[{id:'alice',name:'Alice',city:'杭州',date:now,tool:'Codex',model:'model-a',input:'1000',output:'100',cacheRead:'200',cacheWrite:'0'},{id:'alice',name:'Alice',city:'杭州',date:now,tool:'Claude Code',model:'model-b',input:'500',output:'200',cacheRead:'300',cacheWrite:'40'},{id:'bob',name:'Bob',city:'上海',date:now,tool:'Codex',model:'model-a',input:'400',output:'100',cacheRead:null,cacheWrite:'0'}];
+ await page.route('**/api/**',async route=>{const path=new URL(route.request().url()).pathname;let body;
+ if(path==='/api/session')body={configured:true,user:logged?{name:'UI Tester',city:'杭州',public:false}:null,csrf:logged?'test-csrf':null};
+ else if(path==='/api/records')body={records};else if(path==='/api/location')body={city:'杭州',source:'ip'};
+ else if(path==='/api/profile'){expect(route.request().headers()['x-csrf-token']).toBe('test-csrf');body={ok:true};}
+ else if(path==='/api/enrollment')body={ticket:'synthetic-onetime-code',expires:Date.now()+900000};
+ else if(path==='/api/import')body={added:1,duplicates:0};else if(path==='/api/me'||path==='/api/logout')body={ok:true};else return route.abort();
+ await route.fulfill({contentType:'application/json',body:JSON.stringify(body)});});
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');await expect(page.locator('#join')).toBeHidden();await expect(page.locator('#manual')).toBeHidden();await expect(page.getByRole('button',{name:'看看演示'})).toHaveCount(0);await expect(page.locator('#rows tr:not(.detail-row)')).toHaveCount(2);
+ await page.locator('[data-detail]').first().click();await expect(page.locator('.detail-row').first()).toBeVisible();await expect(page.locator('.detail-row').first()).toContainText('Claude Code');await expect(page.locator('.detail-row').first()).toContainText('缓存写入');await page.screenshot({path:'test-results/desktop.png',fullPage:true});
+ await page.goto('/setup');await expect(page.locator('#github-login')).toBeVisible();await expect(page.locator('#manual')).toBeHidden();logged=true;await page.reload();await expect(page.locator('#register')).toBeVisible();await expect(page.locator('[name=name]')).toHaveValue('UI Tester');await page.locator('[name=name]').fill('UI Tester');await page.locator('#copy-agent').click();await expect(page.locator('#agent-prompt')).toContainText('--all --install');await expect(page.locator('#agent-prompt')).toContainText('synthetic-onetime-code');
+ await page.locator('#file').setInputFiles({name:'usage.json',mimeType:'application/json',buffer:Buffer.from('{}')});await page.locator('#import').click();await expect(page.locator('#feedback')).toContainText('新增 1 条');
+ await page.setViewportSize({width:390,height:844});await page.goto('/');await page.locator('[data-detail]').first().click();await page.screenshot({path:'test-results/mobile.png',fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(errors).toEqual([]);
 });

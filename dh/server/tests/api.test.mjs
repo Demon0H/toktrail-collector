@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-const dir=mkdtempSync(join(tmpdir(),'dh-test-'));process.env.DATA_DIR=dir;process.env.NODE_ENV='test';
+const dir=mkdtempSync(join(tmpdir(),'dh-test-'));process.env.DATA_DIR=dir;process.env.NODE_ENV='test';process.env.ALLOW_LEGACY_REGISTRATION='1';
 const {server,normalize}=await import('../server.mjs');
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`;
