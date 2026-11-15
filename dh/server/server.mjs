@@ -3,6 +3,7 @@ import {devices} from './devices.mjs';
 import {githubAuth} from './auth.mjs';
 import {locate} from './geo.mjs';
 import http from 'node:http';
+import {gzip} from 'node:zlib';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, createHash } from 'node:crypto';
 import { readFileSync, mkdirSync } from 'node:fs';
@@ -63,7 +64,7 @@ const server=http.createServer(async(req,res)=>{try{
   return send(res,200,{records:rows,next:rows.length===1000?rows.at(-1).recordKey:null});
  }
  if(u.pathname==='/api/records'&&req.method==='GET'){
-  const rows=db.prepare(`SELECT m.id,m.name,m.city,m.avatar,m.github_login AS githubLogin,r.date,r.tool,r.model,r.input,r.output,r.cacheRead,r.cacheWrite FROM records r JOIN members m ON m.id=r.member WHERE m.public=1 AND r.flag='' ORDER BY r.date DESC`).all();return send(res,200,{records:rows});
+  const rows=db.prepare(`SELECT m.id,m.name,m.city,m.avatar,m.github_login AS githubLogin,r.date,r.tool,r.model,r.input,r.output,r.cacheRead,r.cacheWrite FROM records r JOIN members m ON m.id=r.member WHERE m.public=1 AND r.flag='' ORDER BY r.date DESC`).all();const payload=JSON.stringify({records:rows}); if(/(?:^|,)\s*gzip\s*(?:;\s*q=(?!0(?:\.0*)?(?:\s*(?:,|$)))[0-9.]+)?\s*(?:,|$)/i.test(req.headers['accept-encoding']||'')){return gzip(payload,(err,compressed)=>{if(err){send(res,500,{error:'榜单压缩失败，请重试'});return;}res.writeHead(200,{'Content-Type':'application/json; charset=utf-8','Content-Encoding':'gzip','Vary':'Accept-Encoding','Cache-Control':'no-store'});res.end(compressed);});} return send(res,200,{records:rows});
  }
  if(u.pathname.startsWith('/api/'))throw fail('接口不存在',404);
  const files={'/':'index.html','/setup':'index.html','/app.js':'app.js','/style.css':'style.css','/agent-setup.md':'agent-setup.md','/public-security.png':'public-security.png'};const f=files[u.pathname];if(!f)throw fail('页面不存在',404);
