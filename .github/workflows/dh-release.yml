@@ -1,0 +1,88 @@
+name: DH TokenRank
+on:
+  push:
+    branches: [master]
+    tags: ['dh-v*']
+    paths: ['cmd/dh-tokenrank/**', 'dh/**', '.github/workflows/dh-release.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.13'
+          cache: false
+      - run: go test ./cmd/dh-tokenrank ./internal/source/pipeline ./internal/local/exportcommit ./internal/scheduler
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --test tests/api.test.mjs
+        working-directory: dh/server
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [darwin, windows, linux]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.13'
+          cache: false
+      - name: Build and package DH-specific collector
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: '0'
+          VERSION: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target="dh-tokenrank-${GOOS}-${GOARCH}"
+          mkdir -p "dist/$target"
+          ext=''; if [ "$GOOS" = windows ]; then ext='.exe'; fi
+          go build -mod=vendor -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "dist/$target/dh-tokenrank$ext" ./cmd/dh-tokenrank
+          go build -mod=vendor -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "dist/$target/toktrail$ext" ./cmd/toktrail
+          cp LICENSE dh/AGENT_SETUP.md "dist/$target/"
+          cd dist
+          if [ "$GOOS" = windows ]; then zip -r "$target.zip" "$target"; else tar czf "$target.tar.gz" "$target"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dh-tokenrank-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/dh-v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dh-tokenrank-*
+          merge-multiple: true
+          path: release
+      - name: Publish six platform archives and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ github.ref_name }}
+        run: |
+          cd release
+          sha256sum *.zip *.tar.gz > SHA256SUMS
+          cp ../dh/install/install.sh ../dh/install/install.ps1 .
+          gh release create "$VERSION" ./* --verify-tag --latest --title "DH燃源榜 $VERSION" --notes-file ../dh/RELEASE_NOTES.md

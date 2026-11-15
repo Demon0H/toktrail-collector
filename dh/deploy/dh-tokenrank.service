@@ -1,0 +1,24 @@
+[Unit]
+Description=DH TokenRank leaderboard
+After=network.target
+
+[Service]
+Type=simple
+User=dh-tokenrank
+Group=dh-tokenrank
+WorkingDirectory=/opt/dh-tokenrank
+Environment=HOST=0.0.0.0
+Environment=PORT=8081
+Environment=DATA_DIR=/var/lib/dh-tokenrank
+ExecStart=/opt/dh-tokenrank-runtime/current/bin/node /opt/dh-tokenrank/server.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dh-tokenrank
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+# Use this only when public ports 80/443 are routed to this host and DNS is set.
+tokenrank.demonh.site {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8081
+}

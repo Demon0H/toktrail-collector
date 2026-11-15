@@ -1,3 +1,15 @@
+# DH燃源榜专用发行版
+
+本 fork 专门对接 https://tokenrank.demonh.site 。[下载六平台构建产物](https://github.com/Demon0H/toktrail-collector/releases/latest) · [一句话配置与 Agent 接入说明](dh/AGENT_SETUP.md) · [服务端源码](dh/server/)。
+
+将这句话交给 Agent：
+
+> 请阅读 https://tokenrank.demonh.site/agent-setup.md，帮我安装并配置 DH燃源榜专用采集器；只连接该站点，先让我确认采集目录和定时任务，保持公开状态由我选择，不在聊天或日志中输出密钥。
+
+使用 `dh-tokenrank` 接入 DH；它复用上游隐私适配器，使用独立状态和 DH 专用 API。压缩包中的 `toktrail` 为上游离线工具，其原版 connect / bind / sync 不作为 DH 接入入口。发布由 `.github/workflows/dh-release.yml` 管理，`dh-v*` 标签生成六平台 Release；保留下方上游说明与 MIT 版权。
+
+---
+
 # TokTrail Collector
 
 [中文](README.zh-CN.md)
