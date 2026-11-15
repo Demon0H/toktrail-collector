@@ -11,3 +11,5 @@
 #account-panel{display:flex;justify-content:space-between;gap:12px;align-items:center;padding-bottom:16px;margin-bottom:15px;border-bottom:1px solid #5a344b;font-size:13px}#account-panel[hidden]{display:none}#login-panel p{line-height:1.8;font-size:13px;color:#d5b7cb}#login-panel h3{font-size:19px;margin:0 0 12px}#login-panel .button{margin:8px 0}html{color-scheme:dark}
 
 [hidden]{display:none!important}body[data-page="home"] #join,body[data-page="home"] #manual{display:none!important}body[data-page="setup"] #board{display:none!important}body[data-page="home"] nav .board-nav{background:#38202e;color:#ff80af}body[data-page="setup"] nav a[href="/setup"]{background:#38202e;color:#ff80af}body[data-page="setup"] .onboarding{margin-bottom:20px}body[data-page="home"] main{min-height:calc(100vh - 180px);padding-bottom:45px}
+
+.manual-entry{margin:0 0 32px;padding:0 0 18px;border-bottom:1px solid #503043}.manual-entry button{font-size:12px;color:#d9a7c2;padding:4px 0}body[data-page="home"] .manual-entry{display:none}.manual-entry+#manual{margin-top:0;border-top:0;padding-top:0}

@@ -46,7 +46,9 @@ function detailMarkup(g,includeCache){
 }
 $('rows').addEventListener('click',event=>{const button=event.target.closest('[data-detail]');if(!button)return;const row=$(button.dataset.detail);row.hidden=!row.hidden;button.setAttribute('aria-expanded',String(!row.hidden));button.querySelector('span').textContent=row.hidden?'查看明细':'收起明细';});
 
-async function session(){try{const b=await api('/api/session');currentUser=b.user;csrf=b.csrf;$('login-panel').hidden=!!b.user;$('manual').hidden=!b.user;$('account-panel').hidden=!b.user;$('register').hidden=!b.user;if(b.user){$('account-name').textContent='已登录 · '+b.user.name;document.querySelector('[name=name]').value=b.user.name;if(b.user.city)$('city').textContent=b.user.city;}else if(!b.configured){$('auth-status').textContent='GitHub 登录配置中，请稍后重试。';}}catch{$('auth-status').textContent='登录状态读取失败，请刷新重试。';}}
+async function session(){try{const b=await api('/api/session');currentUser=b.user;csrf=b.csrf;$('login-panel').hidden=!!b.user;$('manual').hidden=true;$('manual-toggle').setAttribute('aria-expanded','false');$('account-panel').hidden=!b.user;$('register').hidden=!b.user;if(b.user){$('account-name').textContent='已登录 · '+b.user.name;document.querySelector('[name=name]').value=b.user.name;if(b.user.city)$('city').textContent=b.user.city;}else if(!b.configured){$('auth-status').textContent='GitHub 登录配置中，请稍后重试。';}}catch{$('auth-status').textContent='登录状态读取失败，请刷新重试。';}}
 $('logout').onclick=()=>action($('logout'),async()=>{await api('/api/logout','POST',{});currentUser=null;csrf=null;$('agent-prompt').hidden=true;await session();feedback('已退出登录。');});
 if(new URLSearchParams(location.search).has('login'))feedback('GitHub 登录未完成，请重试。',true);
 session();
+
+$('manual-toggle').onclick=()=>{if(!currentUser){$('auth-status').textContent='手动接入也需要先使用 GitHub 登录。';$('github-login').focus();return;}$('manual').hidden=!$('manual').hidden;$('manual-toggle').setAttribute('aria-expanded',String(!$('manual').hidden));if(!$('manual').hidden)$('manual').scrollIntoView({behavior:'smooth',block:'start'});};
