@@ -5,3 +5,8 @@
 bin/
 dist/
 *.log
+
+/dh/server/data/
+/dh/server/test-results/
+/dh/server/playwright-report/
+/dh/server/node_modules/

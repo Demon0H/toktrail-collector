@@ -16,7 +16,11 @@ func schedulerOutputCommand(name string, args ...string) *exec.Cmd {
 			// -EncodedCommand is UTF-16LE base64, without a BOM. The decoded
 			// program only contains a validated fixed-format ASCII task name.
 			encoded := base64.StdEncoding.EncodeToString(encodeUTF16LEWithBOM(script)[2:])
-			return exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded)
+			shell := "powershell.exe"
+			if modern, e := exec.LookPath("pwsh.exe"); e == nil {
+				shell = modern
+			}
+			return exec.Command(shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded)
 		}
 	}
 	return exec.Command(name, args...)

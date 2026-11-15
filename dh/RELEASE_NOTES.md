@@ -1,7 +1,8 @@
-DH燃源榜专用采集器，固定连接 https://tokenrank.demonh.site 。
+DH燃源榜 dh-v1.1.1 修复与恢复版本。
 
-- discover 自动发现本机所有受支持本地工具，setup --all --install 设置完整历史及后续工具的定时采集。
-- 网站先填写昵称，城市由访问者 IP 自动获取；复制的说明携带 15 分钟一次性接入码，设备密钥仅可查询自身和上传。
-- 单个来源失败不阻断其他工具；失败队列重试、记录去重、管理密钥与设备密钥隔离。
-- macOS / Windows / Linux 的 amd64 与 arm64 六平台压缩包，含 dh-tokenrank、toktrail 离线工具与 MIT 许可证；附 SHA256SUMS 和安装脚本。
-- 公网 HTTPS 与加密回源已部署，详见 dh/AGENT_SETUP.md。
+- Windows 包补齐 toktrail-background.exe，安装器验证并复制全部三个程序；原生 CI 实际安装、查询和移除测试任务。
+- 已确认的批次不再删除，保持不可变归档和增量信任链；只上传 pending 批次。Codex / DeepSeek 的第二次扫描与新增记录已补回归测试。
+- 新增 status、repair、已有身份复用 setup；历史恢复只接受服务器确认且严格核对的快照，不重传历史或清空游标。
+- 同一账号的多设备身份、凭据撤销/安全重绑、同步失败状态；严格拒绝历史篡改、未来时间和高频请求，异常 Token 隔离。客户端自报无法绝对防伪。
+- 网站新增修复配置说明、设备管理与 GitHub 头像同步。
+- macOS / Windows / Linux 的 amd64 与 arm64 六平台，附安装脚本和 SHA256SUMS。

@@ -8,14 +8,14 @@ const {server,normalize}=await import('../server.mjs');
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`;
 async function request(path,method='GET',body,token=''){const res=await fetch(base+path,{method,headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:body===undefined?undefined:JSON.stringify(body)});return {status:res.status,data:await res.json()};}
-const record={recordKey:'safe-key',kind:'delta',occurredAt:new Date().toISOString(),tool:'Codex',model:'test-model',input:'9007199254740993',output:'25',cacheRead:null,cacheWrite:'0',prompt:'must never be stored'};
+const record={recordKey:'safe-key',kind:'delta',occurredAt:new Date().toISOString(),tool:'Codex',model:'test-model',input:'9007199',output:'25',cacheRead:null,cacheWrite:'0',prompt:'must never be stored'};
 test('community lifecycle, opt-in, deduplication, ownership and privacy',async()=>{
  const a=await request('/api/members','POST',{name:'DH 测试',city:'杭州'});assert.equal(a.status,201);const token=a.data.token;
  assert.equal((await request('/api/import','POST',{records:[record]},'wrong')).status,401);
  assert.equal((await request('/api/import','POST',{records:[record]},token)).data.added,1);
  assert.equal((await request('/api/import','POST',{records:[record]},token)).data.duplicates,1);
  assert.deepEqual((await request('/api/records')).data.records,[]);
- await request('/api/me','PATCH',{public:true},token);const rows=(await request('/api/records')).data.records;assert.equal(rows.length,1);assert.equal(rows[0].input,'9007199254740993');assert.equal(rows[0].cacheRead,null);assert.equal(rows[0].prompt,undefined);assert.equal(rows[0].secret,undefined);
+ await request('/api/me','PATCH',{public:true},token);const rows=(await request('/api/records')).data.records;assert.equal(rows.length,1);assert.equal(rows[0].input,'9007199');assert.equal(rows[0].cacheRead,null);assert.equal(rows[0].prompt,undefined);assert.equal(rows[0].secret,undefined);
  const bad=await request('/api/import','POST',{records:[{...record,recordKey:'second'},{...record,input:'-1'}]},token);assert.equal(bad.status,400);assert.equal((await request('/api/records')).data.records.length,1);
  await request('/api/me','PATCH',{public:false},token);assert.equal((await request('/api/records')).data.records.length,0);
  await request('/api/me','DELETE',undefined,token);assert.equal((await request('/api/me','GET',undefined,token)).status,401);
@@ -33,5 +33,26 @@ test('one-time enrollment scopes device tokens to sync and revokes them on delet
  assert.equal((await request('/api/import','POST',{records:[record]},device.data.token)).data.added,1);
  await request('/api/me','DELETE',undefined,owner.token);
  assert.equal((await request('/api/me','GET',undefined,device.data.token)).status,401);
+});
+test('multiple devices dedupe account-wide, reject mutation, isolate identities and reconnect safely',async()=>{
+ const owner=(await request('/api/members','POST',{name:'Multi device',public:true})).data;
+ const other=(await request('/api/members','POST',{name:'Other account'})).data;
+ const bind=async(previousToken,ownerToken=owner.token)=>{const ticket=(await request('/api/enrollment','POST',{},ownerToken)).data.ticket;return request('/api/enroll','POST',{ticket,previousToken,platform:'windows/amd64'});};
+ const a=(await bind()).data,b=(await bind()).data;assert.notEqual(a.deviceId,b.deviceId);
+ assert.equal((await request('/api/import','POST',{records:[record]},a.token)).data.added,1);
+ assert.equal((await request('/api/import','POST',{records:[record]},b.token)).data.duplicates,1);
+ const conflict=await request('/api/import','POST',{records:[{...record,recordKey:'rollback'},{...record,output:'999'}]},b.token);assert.equal(conflict.status,409);
+ assert.equal((await request('/api/history','GET',undefined,a.token)).data.records.length,1);
+ assert.equal((await request('/api/history','GET',undefined,other.token)).data.records.length,0);
+ assert.equal((await bind(a.token,other.token)).status,409);
+ assert.equal((await request('/api/devices/'+a.deviceId+'/revoke','POST',{},other.token)).status,404);
+ await request('/api/devices/'+a.deviceId+'/revoke','POST',{},owner.token);assert.equal((await request('/api/me','GET',undefined,a.token)).status,401);
+ let renewed=(await bind(a.token)).data;const repeated=(await bind(a.token)).data;assert.equal(repeated.deviceId,a.deviceId);assert.equal((await request('/api/me','GET',undefined,renewed.token)).status,401);renewed=repeated;assert.equal(renewed.deviceId,a.deviceId);assert.equal((await request('/api/me','GET',undefined,renewed.token)).status,200);
+ await request('/api/device-status','POST',{ok:false,failedSources:['codex-jsonl']},b.token);let failed=(await request('/api/devices','GET',undefined,owner.token)).data.devices.find(d=>d.id===b.deviceId);assert.equal(failed.lastError,'codex-jsonl');assert.equal(failed.lastSync,0);await request('/api/device-status','POST',{ok:true},b.token);const devices=(await request('/api/devices','GET',undefined,owner.token)).data.devices;assert.equal(devices.find(d=>d.id===b.deviceId).lastError,'');assert.ok(devices.find(d=>d.id===b.deviceId).lastSync>0);assert.equal(devices.length,2);assert.equal(devices.reduce((n,d)=>n+d.records,0),1);
+ const large={...record,recordKey:'outlier',input:'9007199254740993'};const held=await request('/api/import','POST',{records:[large]},b.token);assert.equal(held.data.quarantined,1);
+ assert.equal((await request('/api/records')).data.records.filter(r=>r.id===owner.id).length,1);
+ const history=(await request('/api/history','GET',undefined,b.token)).data.records;assert.equal(history.find(r=>r.recordKey==='outlier').input,'9007199254740993');
+ assert.equal((await request('/api/import','POST',{records:[{...record,recordKey:'future',occurredAt:new Date(Date.now()+3600000).toISOString()}]},b.token)).status,400);
+ await request('/api/me','DELETE',undefined,owner.token);await request('/api/me','DELETE',undefined,other.token);
 });
 after(async()=>{await new Promise(resolve=>server.close(resolve));try{rmSync(dir,{recursive:true,force:true});}catch{/* SQLite may retain a Windows file handle until process exit. */}});

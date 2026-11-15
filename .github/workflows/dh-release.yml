@@ -3,7 +3,7 @@ on:
   push:
     branches: [master]
     tags: ['dh-v*']
-    paths: ['cmd/dh-tokenrank/**', 'dh/**', '.github/workflows/dh-release.yml']
+    paths: ['cmd/dh-tokenrank/**', 'cmd/toktrail-background/**', 'internal/winbackground/**', 'internal/scheduler/**', 'dh/**', '.github/workflows/dh-release.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -20,6 +20,12 @@ jobs:
           go-version: '1.24.13'
           cache: false
       - run: go test ./cmd/dh-tokenrank ./internal/source/pipeline ./internal/local/exportcommit ./internal/scheduler
+      - name: Windows packaged scheduler integration
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          DH_WINDOWS_RELEASE_E2E: '1'
+        run: go test ./cmd/dh-tokenrank -run TestWindowsPackagedScheduler -count=1 -v
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -52,6 +58,9 @@ jobs:
           ext=''; if [ "$GOOS" = windows ]; then ext='.exe'; fi
           go build -mod=vendor -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "dist/$target/dh-tokenrank$ext" ./cmd/dh-tokenrank
           go build -mod=vendor -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "dist/$target/toktrail$ext" ./cmd/toktrail
+          if [ "$GOOS" = windows ]; then
+            go build -mod=vendor -trimpath -ldflags "-s -w -H=windowsgui -X main.version=$VERSION" -o "dist/$target/toktrail-background.exe" ./cmd/toktrail-background
+          fi
           cp LICENSE dh/AGENT_SETUP.md "dist/$target/"
           cd dist
           if [ "$GOOS" = windows ]; then zip -r "$target.zip" "$target"; else tar czf "$target.tar.gz" "$target"; fi

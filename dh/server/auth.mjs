@@ -4,6 +4,8 @@ const random=()=>randomBytes(32).toString('base64url');
 export const cookies=req=>Object.fromEntries((req.headers.cookie||'').split(';').map(v=>v.trim().split('=')).filter(p=>p.length===2));
 export function githubAuth(db,locate){
  if(!db.prepare('PRAGMA table_info(members)').all().some(c=>c.name==='github_id'))db.exec('ALTER TABLE members ADD COLUMN github_id TEXT');
+ for(const name of ['avatar','github_login'])if(!db.prepare('PRAGMA table_info(members)').all().some(c=>c.name===name))db.exec(`ALTER TABLE members ADD COLUMN ${name} TEXT NOT NULL DEFAULT ''`);
+ db.exec("UPDATE members SET avatar='https://avatars.githubusercontent.com/u/'||github_id||'?v=4' WHERE github_id IS NOT NULL AND avatar=''");
  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS members_github ON members(github_id); CREATE TABLE IF NOT EXISTS sessions(secret TEXT PRIMARY KEY,member TEXT NOT NULL,csrf TEXT NOT NULL,expires INTEGER NOT NULL);');
  const pending=new Map();
  const configured=()=>!!(process.env.GITHUB_CLIENT_ID&&process.env.GITHUB_CLIENT_SECRET);
@@ -12,7 +14,7 @@ export function githubAuth(db,locate){
  const redirect=(res,where,headers={})=>{res.writeHead(302,{Location:where,'Cache-Control':'no-store',...headers});res.end();};
  const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
  async function handle(req,res,u){
-  if(u.pathname==='/api/session'&&req.method==='GET'){const m=session(req);json(res,200,{configured:configured(),user:m?{name:m.name,city:m.city,public:!!m.public,github:true}:null,csrf:m?.csrf||null});return true;}
+  if(u.pathname==='/api/session'&&req.method==='GET'){const m=session(req);json(res,200,{configured:configured(),user:m?{name:m.name,city:m.city,public:!!m.public,github:true,avatar:m.avatar,githubLogin:m.github_login}:null,csrf:m?.csrf||null});return true;}
   if(u.pathname==='/auth/github'&&req.method==='GET'){
    if(!configured()){res.writeHead(503,{'Content-Type':'text/plain; charset=utf-8','Cache-Control':'no-store'});res.end('GitHub 登录正在配置，请稍后再试。');return true;}
    for(const [key,v]of pending)if(v.expires<Date.now())pending.delete(key);if(pending.size>=1000){json(res,429,{error:'登录请求过多，请稍后重试'});return true;}
@@ -31,6 +33,8 @@ export function githubAuth(db,locate){
     const gh=String(profile.id),city=(await locate(req)).city;let m=db.prepare('SELECT * FROM members WHERE github_id=?').get(gh);
     if(!m){const id=randomBytes(12).toString('hex');db.prepare('INSERT INTO members(id,name,city,secret,public,github_id) VALUES(?,?,?,?,1,?)').run(id,String(profile.name||profile.login).slice(0,32),city,hash(random()),gh);m=db.prepare('SELECT * FROM members WHERE id=?').get(id);}
     else db.prepare('UPDATE members SET city=?,public=1 WHERE id=?').run(city||m.city,m.id);
+    const avatar=typeof profile.avatar_url==='string'&&profile.avatar_url.startsWith('https://avatars.githubusercontent.com/')?profile.avatar_url:'https://avatars.githubusercontent.com/u/'+gh+'?v=4';
+    db.prepare('UPDATE members SET avatar=?,github_login=? WHERE id=?').run(avatar,profile.login,m.id);
     const key=random(),csrf=random();db.prepare('DELETE FROM sessions WHERE expires<?').run(Date.now());db.prepare('INSERT INTO sessions VALUES(?,?,?,?)').run(hash(key),m.id,csrf,Date.now()+30*86400000);
     redirect(res,'/setup',{'Set-Cookie':[cookie('dh_session',key,30*86400),cookie('dh_oauth','',0,'/auth')]});
    }catch{redirect(res,'/setup?login=failed');}return true;
