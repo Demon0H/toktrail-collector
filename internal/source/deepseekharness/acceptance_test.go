@@ -355,6 +355,15 @@ const (
 	usageModI = `{"inputTokens":109,"outputTokens":10}`
 	// Armed-retry step attribution (turn with a never-started retry).
 	usageArmedRetry = `{"inputTokens":40,"outputTokens":4}`
+
+	// Empty-attempt settlement literals (an assistant/attempt with no sample
+	// must not consume the step's settlement).
+	usageEAMulti    = `{"inputTokens":410,"outputTokens":41}`
+	usageEADupFirst = `{"inputTokens":411,"outputTokens":41}`
+	usageEADupDup   = `{"inputTokens":412,"outputTokens":41}`
+	usageEAGood     = `{"inputTokens":413,"outputTokens":41}`
+	usageEAEndOnly  = `{"inputTokens":414,"outputTokens":41}`
+	usageEACorrupt  = `{"inputTokens":415,"outputTokens":41}`
 )
 
 // ---------------------------------------------------------------------------
@@ -1160,6 +1169,135 @@ func TestLoadLifecycleFailClosed(t *testing.T) {
 			t.Errorf("invalid or incomplete turn (input %s) must export nothing", absent)
 		}
 	}
+}
+
+// TestLoadEmptyAttemptFixture is the exact 7-line synthetic repro from the
+// bug report: step/start, an empty assistant/attempt (no message, no usage,
+// empty stream, as DSH emits on an image offload), then the real
+// assistant/message that settles the step. Before the fix the empty attempt
+// consumed the step's single settlement and the whole turn was invalidated,
+// so the log exported nothing at all.
+func TestLoadEmptyAttemptFixture(t *testing.T) {
+	root := t.TempDir()
+	body, err := os.ReadFile(filepath.Join("testdata", "empty-attempt", "session.v4.jsonl"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(body), "\n"), "\n")
+	writePlain(t, sessionFile(root, "--fixture--", "session-fixture-with-attempt", "session.v4.jsonl"), lines)
+
+	recs := loadAll(t, root)
+	if len(recs) != 1 {
+		t.Fatalf("got %d records, want 1: %v", len(recs), recs)
+	}
+	// The empty attempt settles nothing; the real settlement is the
+	// assistant/message (totalTokens proves cacheWrite zero).
+	assertRecords(t, recs, []wantRec{
+		{input: "1000", output: "200", cacheRead: "300", cacheWrite: "0", unixSec: 1795000004},
+	})
+	if got := adapter.StringField(recs[0], "model"); got != "fixture-model" {
+		t.Fatalf("model = %q, want fixture-model", got)
+	}
+}
+
+// TestLoadEmptyAttemptSettlesOnce pins the positive shape beyond the fixture:
+// several consecutive empty attempts still leave the step settleable, and the
+// real settlement produces exactly one record.
+func TestLoadEmptyAttemptSettlesOnce(t *testing.T) {
+	root := t.TempDir()
+	const id = "aaaaaaaa-0000-4000-8000-00000000000a"
+	fx := newFixture(id, false)
+
+	fx.push(fx.turnStart(0))
+	fx.push(fx.userMessage(0))
+	fx.push(fx.stepStart(0, 0))
+	s, m := fx.next()
+	fx.push(assistantAttemptJSON(s, m, 0, 0)) // empty attempt
+	s, m = fx.next()
+	fx.push(assistantAttemptJSON(s, m, 0, 0)) // empty attempt again
+	s, ms := fx.next()
+	fx.push(assistantMessageJSON(s, ms, 0, 0, usageEAMulti, "deepseek-chat"))
+	fx.push(fx.stepEnd(0, 0))
+	fx.turnEnd(0)
+
+	writePlain(t, sessionFile(root, "--demo--", id, "session.v4.jsonl"), fx.Lines())
+	recs := loadAll(t, root)
+	assertRecords(t, recs, []wantRec{
+		{input: "410", output: "41", cacheRead: nil, cacheWrite: nil, unixSec: time.UnixMilli(ms).Unix()},
+	})
+}
+
+// TestLoadEmptyAttemptKeepsDuplicateSettlementFatal is the negative
+// regression: relaxing the empty attempt must not relax the anti-double-count
+// rule. Two assistant/message events that BOTH carry a sample still invalidate
+// the whole turn, and a corrupt attempt sample still fails its turn too, while
+// neighbouring valid turns keep exporting.
+func TestLoadEmptyAttemptKeepsDuplicateSettlementFatal(t *testing.T) {
+	root := t.TempDir()
+	const id = "bbbbbbbb-0000-4000-8000-00000000000b"
+	fx := newFixture(id, false)
+
+	// Turn 0: two settlements on one step: the turn must not export.
+	fx.push(fx.turnStart(0))
+	fx.push(fx.userMessage(0))
+	fx.push(fx.stepStart(0, 0))
+	s, m := fx.next()
+	fx.push(assistantMessageJSON(s, m, 0, 0, usageEADupFirst, "deepseek-chat"))
+	s, m = fx.next()
+	fx.push(assistantMessageJSON(s, m, 0, 0, usageEADupDup, "deepseek-chat"))
+	fx.push(fx.stepEnd(0, 0))
+	fx.turnEnd(0)
+
+	// Turn 1: an empty attempt followed by a corrupt attempt sample (negative
+	// input) is not an empty attempt shape: the turn fails closed.
+	fx.push(fx.turnStart(1))
+	fx.push(fx.userMessage(1))
+	fx.push(fx.stepStart(1, 0))
+	s, m = fx.next()
+	fx.push(assistantAttemptJSON(s, m, 1, 0))
+	s, m = fx.next()
+	fx.push(assistantAttemptJSON(s, m, 1, 0, usageNegative))
+	fx.push(fx.stepEnd(1, 0))
+	fx.turnEnd(1)
+
+	// Turn 2: valid neighbour, must still export.
+	ms2 := fx.messageTurn(2, usageEAGood, "deepseek-chat")
+
+	writePlain(t, sessionFile(root, "--demo--", id, "session.v4.jsonl"), fx.Lines())
+	recs := loadAll(t, root)
+	assertRecords(t, recs, []wantRec{
+		{input: "413", output: "41", cacheRead: nil, cacheWrite: nil, unixSec: time.UnixMilli(ms2).Unix()},
+	})
+	for _, absent := range []string{"411", "412", "-100", "415"} {
+		if hasInput(recs, absent) {
+			t.Errorf("invalid turn (input %s) must export nothing", absent)
+		}
+	}
+}
+
+// TestLoadEmptyAttemptWithStepEndOnly covers the other empty-attempt shape: an
+// attempt closes with no sample and the step ends without any settlement. That
+// step reports nothing but must not poison the turn or its neighbours.
+func TestLoadEmptyAttemptWithStepEndOnly(t *testing.T) {
+	root := t.TempDir()
+	const id = "cccccccc-0000-4000-8000-00000000000c"
+	fx := newFixture(id, false)
+
+	fx.push(fx.turnStart(0))
+	fx.push(fx.userMessage(0))
+	fx.push(fx.stepStart(0, 0))
+	s, m := fx.next()
+	fx.push(assistantAttemptJSON(s, m, 0, 0))
+	fx.push(fx.stepEnd(0, 0))
+	fx.turnEnd(0)
+
+	ms1 := fx.messageTurn(1, usageEAEndOnly, "deepseek-chat")
+
+	writePlain(t, sessionFile(root, "--demo--", id, "session.v4.jsonl"), fx.Lines())
+	recs := loadAll(t, root)
+	assertRecords(t, recs, []wantRec{
+		{input: "414", output: "41", cacheRead: nil, cacheWrite: nil, unixSec: time.UnixMilli(ms1).Unix()},
+	})
 }
 
 // TestLoadTornTailPlainJSONL covers crash recovery: an incomplete final line

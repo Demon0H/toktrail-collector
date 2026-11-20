@@ -3,7 +3,7 @@ on:
   push:
     branches: [master]
     tags: ['dh-v*']
-    paths: ['cmd/dh-tokenrank/**', 'cmd/toktrail-background/**', 'internal/winbackground/**', 'internal/scheduler/**', 'dh/**', '.github/workflows/dh-release.yml']
+    paths: ['cmd/dh-tokenrank/**', 'cmd/toktrail-background/**', 'internal/winbackground/**', 'internal/scheduler/**', 'internal/source/deepseekharness/**', 'dh/**', '.github/workflows/dh-release.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
         with:
           go-version: '1.24.13'
           cache: false
-      - run: go test ./cmd/dh-tokenrank ./internal/source/pipeline ./internal/local/exportcommit ./internal/scheduler
+      - run: go test ./cmd/dh-tokenrank ./internal/source/deepseekharness ./internal/source/pipeline ./internal/local/exportcommit ./internal/scheduler
       - name: Windows packaged scheduler integration
         if: runner.os == 'Windows'
         shell: pwsh

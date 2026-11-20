@@ -127,6 +127,11 @@ const (
 	// maxIssues caps the LineIssue list; every anomaly still increments
 	// Quarantined so counts stay complete.
 	maxIssues = 50
+	// missingSampleReason marks a settlement event that closed an attempt
+	// without any usage sample. On assistant/attempt that is the empty-attempt
+	// shape (no message, no usage, empty stream); on assistant/message it is
+	// still a corrupt settlement.
+	missingSampleReason = "missing usage sample"
 )
 
 // Adapter returns the DeepSeek Harness source adapter.
@@ -489,6 +494,12 @@ type stepLifecycle struct {
 	state      string
 	ended      bool
 	retryArmed bool
+	// emptyAttempt records that this step was closed by an assistant/attempt
+	// carrying no ledger sample (no message, no usage, empty stream). DSH
+	// emits that shape mid-step (image offload, context rebuild) and then
+	// continues the SAME step with the real assistant/message, so the empty
+	// attempt must not consume the step's single settlement.
+	emptyAttempt bool
 }
 
 // turnLifecycle tracks one turn's completeness and validity.
@@ -687,10 +698,16 @@ func loadSessionFile(ctx context.Context, path string) ([]adapter.Record, []adap
 					st.state = "open"
 				}
 			case "assistant/message", "assistant/attempt":
-				if st.state != "open" {
+				if st.state != "open" && !(st.state == "finishClosed" && st.emptyAttempt) {
 					// A settlement requires an open attempt: a duplicate
 					// settlement (state.kind !== 'open' in DSH) invalidates
 					// the whole turn rather than double counting.
+					//
+					// Exception: an attempt closed with no ledger sample does
+					// not consume the step's single settlement, so the real
+					// assistant/message that follows the same step still
+					// settles. Two attempts that BOTH carry samples keep the
+					// original fail-closed behavior.
 					invalidate(t, lineNo, ev.Type+" without an open attempt")
 					continue
 				}
@@ -708,11 +725,22 @@ func loadSessionFile(ctx context.Context, path string) ([]adapter.Record, []adap
 				}
 				rec, reason, diag := parseSettlement(ev, ad, hdr.ID)
 				if rec == nil {
-					if reason != "" {
+					// An assistant/attempt that closed without any sample is
+					// the empty-attempt shape: it settles nothing, so it must
+					// leave the step settleable instead of failing the turn.
+					// Corrupt samples (negative/unsafe/invalid counts) still
+					// fail the turn closed, and an assistant/message without a
+					// sample stays fatal -- only the attempt variant relaxes.
+					if reason != "" && !(ev.Type == "assistant/attempt" && reason == missingSampleReason) {
 						invalidate(t, lineNo, reason)
+						continue
+					}
+					if ev.Type == "assistant/attempt" {
+						st.emptyAttempt = true
 					}
 					continue
 				}
+				st.emptyAttempt = false
 				pending = append(pending, pendingRecord{line: lineNo, turn: n, record: rec, diag: diag})
 			case "llm/retry":
 				if st.state != "finishClosed" || st.retryArmed {
@@ -816,7 +844,7 @@ func parseSettlement(ev event, data assistantData, sessionID string) (adapter.Re
 		sample = lastUsageChunk(data.Stream)
 	}
 	if sample == nil {
-		return nil, "missing usage sample", ""
+		return nil, missingSampleReason, ""
 	}
 	counts, ok, reason := evaluateSample(sample)
 	if !ok {
